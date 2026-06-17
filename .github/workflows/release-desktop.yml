@@ -3,15 +3,15 @@ name: Build & Release AFT-POS Desktop
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "빌드할 코드 브랜치/태그 (비우면 최신 release/* 자동 선택)"
-        required: false
-        default: ""
       channel:
-        description: "릴리즈 채널"
+        description: "릴리즈 채널 (prod=최신 release/*, dev=develop)"
         type: choice
         options: [prod, dev]
         default: prod
+      ref:
+        description: "(선택) 빌드 브랜치/태그 직접 지정 — 비우면 채널에 따라 자동"
+        required: false
+        default: ""
 
 jobs:
   release:
@@ -22,24 +22,28 @@ jobs:
       CHANNEL: ${{ github.event.inputs.channel }}
       TAG: ${{ github.event.inputs.channel == 'dev' && 'dev-latest' || 'prod-latest' }}
     steps:
-      # ref 비어있으면 코드 repo의 최신 release/* 브랜치를 자동 선택
+      # ref 비어있으면 채널에 따라 자동 선택 (prod=최신 release/*, dev=develop)
       - name: Resolve build ref
         id: ref
         run: |
           $ref = "${{ github.event.inputs.ref }}".Trim()
           if (-not $ref) {
-            $url = "https://x-access-token:${env:CODE_TOKEN}@github.com/team-aft/wildgoose-pos.git"
-            $heads = git ls-remote --heads $url "refs/heads/release/*"
-            $latest = $heads |
-              ForEach-Object { ($_ -split "`t")[1] -replace "^refs/heads/","" } |
-              Where-Object { $_ -match "^release/\d+\.\d+(\.\d+)?$" } |
-              Sort-Object { [version]($_ -replace "^release/","") } |
-              Select-Object -Last 1
-            if (-not $latest) { Write-Error "release/* 브랜치를 찾지 못했습니다"; exit 1 }
-            $ref = $latest
+            if ("${{ github.event.inputs.channel }}" -eq "prod") {
+              $url = "https://x-access-token:${env:CODE_TOKEN}@github.com/team-aft/wildgoose-pos.git"
+              $heads = git ls-remote --heads $url "refs/heads/release/*"
+              $latest = $heads |
+                ForEach-Object { ($_ -split "`t")[1] -replace "^refs/heads/","" } |
+                Where-Object { $_ -match "^release/\d+\.\d+(\.\d+)?$" } |
+                Sort-Object { [version]($_ -replace "^release/","") } |
+                Select-Object -Last 1
+              if (-not $latest) { Write-Error "release/* 브랜치를 찾지 못했습니다"; exit 1 }
+              $ref = $latest
+            } else {
+              $ref = "develop"
+            }
           }
           "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host "빌드 대상 ref: $ref"
+          Write-Host "채널=${{ github.event.inputs.channel }} → 빌드 ref: $ref"
         env:
           CODE_TOKEN: ${{ secrets.CODE_REPO_TOKEN }}
 
