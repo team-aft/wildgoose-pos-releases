@@ -38,10 +38,15 @@ jobs:
       - name: Install deps (tauri CLI)
         run: npm ci
 
-      # 같은 채널의 이전 릴리즈/태그 제거 (덮어쓰기)
+      # 같은 채널의 이전 릴리즈/태그 제거 (있을 때만, 없으면 조용히 통과)
       - name: Delete previous channel release
-        run: gh release delete "$env:TAG" --repo ${{ github.repository }} --yes --cleanup-tag
-        continue-on-error: true
+        run: |
+          if (gh release view "$env:TAG" --repo ${{ github.repository }} 2>$null) {
+            gh release delete "$env:TAG" --repo ${{ github.repository }} --yes --cleanup-tag
+          } else {
+            Write-Host "기존 $env:TAG 릴리즈 없음 — 건너뜀"
+          }
+          exit 0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
